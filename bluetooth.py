@@ -85,14 +85,32 @@ async def scan_for_beacons(recorder, beaconfilter, duration=10.0):
     print(f"Scan duration: {duration} seconds")
     print(f"Total devices found: {len(devices)}")
     print("=" * 50 + "\n")
+
+    for address in beaconfilter:
+        device_found = False
+        for device, advertisement_data in devices.values():
+            if device.address == address:
+                print(f"Device: {device.name if device.name else 'Unknown'}")
+                print(f"  Address: {device.address}")
+                print(f"  RSSI: {advertisement_data.rssi} dBm")
+                print("-" * 40)
+                device_found = True
+                record.record_data(device.address, advertisement_data.rssi)  
+                break
+
+        if not device_found:
+            print("Cannot find specific beacon")
+            print(f"Address : {address}")
+            print(f"RSSI: Null")
+            print("-" * 40)
+            record.record_data(address, None)
     
-    for device, advertisement_data in devices.values():
-        if device.address not in beaconfilter:
+    '''for device, advertisement_data in devices.values():
+        if device.address in beaconfilter:
             continue
         print(f"Device: {device.name if device.name else 'Unknown'}")
         print(f"  Address: {device.address}")
         print(f"  RSSI: {advertisement_data.rssi} dBm")
-        #distance = 10**((-59 - advertisement_data.rssi)/(10*2))
         record.record_data(device.address, advertisement_data.rssi)
         
         # Check for iBeacon
@@ -117,13 +135,15 @@ async def scan_for_beacons(recorder, beaconfilter, duration=10.0):
                     print(f"    URL: {eddystone['url']}")
                 print(f"    TX Power: {eddystone['tx_power']} dBm")
         
-        print("-" * 40)
+        print("-" * 40)'''
 
 def distanceCalculate(mac_address, mRSSI, txPower):
     test = KalmanFilter(0.008, stdev(rssi_dict[mac_address]))
     raw_distanceArray = []
     filtered_distanceArray = []
     for x in rssi_dict[mac_address]:
+        if x is None:
+            continue
         filteredValue = test.filter(x)
         print("Data:", x)
         print("Filtered Data: ", filteredValue)
@@ -137,20 +157,28 @@ def distanceCalculate(mac_address, mRSSI, txPower):
         "filtered": filtered_distanceArray,
     }
 
+def file_naming_convention(trial, scans, duration, distance):
+    return f"{trial}-{distance}cm-{int(duration*scans)}secs-{int(duration)}secondIntervals.csv"
+
 if __name__ == "__main__":
     try:
         record = RecordRSSI()
         filter_beacons = ['EC:81:F6:64:F0:86',
                           'E0:35:2F:E6:42:46',
                           'EC:BF:B3:25:D5:6C']
-        for i in range(120):
-            asyncio.run(scan_for_beacons(record, filter_beacons, duration=1.0))
+        scans = 60
+        duration = 1.0
+        distance = 10
+        for i in range(scans):
+            asyncio.run(scan_for_beacons(record, filter_beacons, duration=duration))
         rssi_dict = record.rssi_values()
-        b1 = distanceCalculate('EC:81:F6:64:F0:86', -59, 2)
-        b2 = distanceCalculate('E0:35:2F:E6:42:46', -65, 2)
-        b3 = distanceCalculate('EC:BF:B3:25:D5:6C', -62, 2)
+        #b1 = distanceCalculate('EC:81:F6:64:F0:86', -59, 2)
+        #b2 = distanceCalculate('E0:35:2F:E6:42:46', -65, 2)
+        #b3 = distanceCalculate('EC:BF:B3:25:D5:6C', -62, 2)
 
-        time1 = np.array([i for i in range(len(b1["raw"]))])
+        df = pd.DataFrame(rssi_dict)
+
+        '''time1 = np.array([i for i in range(len(b1["raw"]))])
         rawvalues1 = np.array(b1["raw"])
         filteredvalues1 = np.array(b1["filtered"])
 
@@ -172,15 +200,12 @@ if __name__ == "__main__":
         ax3.plot(time3, rawvalues3)
         ax3.plot(time3, filteredvalues3, '-.')
         ax3.set_title("No. 2")
-        plt.show()
+        plt.show()'''
 
-        '''for address in rssi_dict.keys():
-            print("")
-            print(f"Address: {address}")
-            print(f"Collected values: {rssi_dict[address]}")
-            mean = sum(rssi_dict[address]) / len(rssi_dict[address])
-            print(f"Mean/Average: {mean}")
-            print("----------------------------------")'''
+        print(df)
+        trial = 5
+        file_name = file_naming_convention(trial, scans, duration, distance)
+        df.to_csv(file_name, encoding='utf-8')
 
     except KeyboardInterrupt:
         print("\nScan interrupted by user")
